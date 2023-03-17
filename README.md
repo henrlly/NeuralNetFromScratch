@@ -1,5 +1,5 @@
 # NeuralNetFromScratch
- Neural net implemented from scratch using only numpy
+ Neural net implemented from scratch using only Numpy
 
 ## Features
  - Linear layer
@@ -14,7 +14,7 @@
 ## To use
 Run `run.ipynb`
 
-Alternatively, `import nn` and call classes/functions from there
+Alternatively, `import nn` in your py/ipynb file and call classes/functions from there
 
 ## Potential improvements
  - [ ] Convolutional layer 
