@@ -2,7 +2,7 @@
  Neural net implemented from scratch using only Numpy
 
 ## Features
- - Linear layer
+ - Linear layer w/wo biases
  - ReLu
  - Tanh
  - Sigmoid
@@ -10,6 +10,12 @@
  - Dropout
  - Ensemble models
  - Save and load models
+
+## Results
+ - MNIST dataset
+    - Ensemble of 10 model (no CNN)
+    - Network structure: [784, 100, 10]
+    - **96.2%** accuracy on test set
 
 ## To use
 Run `run.ipynb`
