@@ -13,7 +13,7 @@
 
 ## Results
  - MNIST dataset
-    - Ensemble of 10 model (no CNN)
+    - Ensemble of 10 models (no CNN)
     - Network structure: [784, 100, 10]
     - **96.2%** accuracy on test set
 
