@@ -1,2 +1,24 @@
 # NeuralNetFromScratch
- Neural net from scratch using only numpy
+ Neural net implemented from scratch using only numpy
+
+## Features
+ - Linear layer
+ - ReLu
+ - Tanh
+ - Sigmoid
+ - Softmax
+ - Dropout
+ - Ensemble models
+ - Save and load models
+
+## To use
+Run `run.ipynb`
+
+Alternatively, `import nn` and call classes/functions from there
+
+## Potential improvements
+ - [ ] Convolutional layer 
+ - [ ] L2 and L1 regularisation
+
+### Dependencies
+curl, tqdm, matplotlib, numpy
