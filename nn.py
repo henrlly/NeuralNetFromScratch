@@ -160,20 +160,27 @@ class NeuralNetwork:
     
     def plot_loss(self):
         plt.plot(self.loss_ls)
+        plt.title('Cross Entropy Loss per Epoch')
+        plt.xlabel('Epoch')
+        plt.ylabel('Cross Entropy Loss')
         plt.show()
 
     def plot_acc(self):
         plt.plot(self.acc_ls)
+        plt.title('Accuracy per Epoch')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
         plt.show()
 
-    def test_pred(self, index, x):
+    def test_pred(self, index, x, y):
         '''
         Plot the image at index in the test set and print the predicted label
         '''
         y_pred = self.forward(x.T[:, index, None])
         y_res = np.argmax(y_pred, 0)
 
-        print(y_res)
+        print('Predicted:', y_res[0])
+        print('Actual:', np.argmax(y.T[:, index, None], 0)[0])
         plt.figure()
         plt.imshow(x.T[:, index, None].reshape((28, 28)), cmap='gray')
 

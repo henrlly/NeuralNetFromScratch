@@ -1,4 +1,4 @@
 mnist_test.csv
 mnist_train.csv
 /models
-/_pycache_
+/__pycache__

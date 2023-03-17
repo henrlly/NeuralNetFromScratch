@@ -14,7 +14,7 @@
 ## To use
 Run `run.ipynb`
 
-Alternatively, `import nn` in your py/ipynb file and call classes/functions from there
+Alternatively, `import nn` in your `.py`/`.ipynb` file and call classes/functions from there
 
 ## Potential improvements
  - [ ] Convolutional layer 
