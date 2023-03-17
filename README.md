@@ -14,8 +14,8 @@
 ## Results
  - MNIST dataset
     - Ensemble of 10 models (no CNN)
-    - Network structure: [784, 100, 10]
-    - **96.2%** accuracy on test set
+        - Trained with SGD over 800 epoches, batch size of 1000 per epoch
+        - **96.2%** accuracy on test set
 
 ## To use
 Run `run.ipynb`
