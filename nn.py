@@ -87,14 +87,55 @@ class SigmoidLayer:
         self.x = None
 
     def forward(self, x):
-        self.x = x
-        return 1 / (1 + np.exp(-x))
+        return  1 / (1 + np.exp(-x))
     
     def backward(self, grad):
-        return grad * (1 - 1 / (1 + np.exp(-self.x)))
+        return grad
     
     def update(self, lr):
         pass
+
+class BatchNorm1DLayer:
+    def __init__(self, input_size, eps=1e-5, momentum=0.9):
+        self.input_size = input_size
+        self.eps = eps
+        self.momentum = momentum
+        
+        self.gamma = np.ones((input_size, 1))
+        self.beta = np.zeros((input_size, 1))
+        
+        self.running_mean = np.zeros((input_size, 1))
+        self.running_var = np.zeros((input_size, 1))
+        
+    def forward(self, x):
+        
+        self.batch_size = x.shape[1]
+        self.x = x
+        self.mean = np.mean(x, axis=1, keepdims=True)
+        self.var = np.var(x, axis=1, keepdims=True)
+        
+        self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
+        self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
+    
+        self.x_hat = (x - self.mean) / np.sqrt(self.var + self.eps)
+        out = self.gamma * self.x_hat + self.beta
+        
+        return out
+    
+    def backward(self, grad):
+        self.grad_gamma = np.sum(grad * self.x_hat, axis=1, keepdims=True)
+        self.grad_beta = np.sum(grad, axis=1, keepdims=True)
+        
+        dx_hat = self.gamma * grad
+        dvar = np.sum(dx_hat * (self.x - self.mean) * -0.5 * (self.var + self.eps)**(-1.5), axis=1, keepdims=True)
+        dmean = np.sum(dx_hat * -1 / np.sqrt(self.var + self.eps), axis=1, keepdims=True) + dvar * np.mean(-2 * (self.x - self.mean), axis=1, keepdims=True)
+        dx = dx_hat * 1 / np.sqrt(self.var + self.eps) + dvar * 2 * (self.x - self.mean) / self.batch_size + dmean / self.batch_size
+        
+        return dx
+    
+    def update(self, lr):
+        self.gamma -= lr * self.grad_gamma
+        self.beta -= lr * self.grad_beta
 
 class NeuralNetwork:
     def __init__(self, layers, input_size, output_size):
@@ -125,7 +166,7 @@ class NeuralNetwork:
     def grad(self, y_pred, y_res):
         return -y_res * np.log(y_pred)
 
-    def train(self, x, y, lr, epochs, batch_size, x_test, y_test):
+    def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1, epoch_delay=50):
         self.loss_ls =[]
         self.acc_ls = []
         pbar = tqdm(range(epochs))
@@ -143,8 +184,9 @@ class NeuralNetwork:
             acc = self.accuracy(x_test, y_test)
             self.loss_ls.append(loss)
             self.acc_ls.append(acc)
-            # if epoch and epoch % 50 == 0: # learning rate decay
-            #     lr /= 2
+
+            if epoch and epoch % epoch_delay == 0: # learning rate decay
+                lr /= lr_decay
 
             pbar.set_description('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss, acc))
         pbar.close()
