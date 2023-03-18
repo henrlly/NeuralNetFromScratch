@@ -27,8 +27,12 @@ Run `run.ipynb`
 Alternatively, `import nn` in your `.py`/`.ipynb` file and call classes/functions from there
 
 ## Potential improvements
- - [x] Convolutional layer 
  - [ ] L2 and L1 regularisation
+ - [ ] Residual connections
+ - [ ] Attention mechanisms
+ - [ ] RNNs
+ - [ ] Transformers
+ - [x] Convolutional layer 
 
 ### Dependencies
 curl, tqdm, matplotlib, numpy
