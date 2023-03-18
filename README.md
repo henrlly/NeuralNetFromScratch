@@ -9,7 +9,7 @@
  - Softmax
  - Dropout
  - Batch normalisation (1D and 2D)
- - Convolutional layer (1D and 2D)
+ - Convolutional layer (1D and 2D) w/wo biases
  - Max pooling (1D and 2D)
  - Learning rate decay
  - Ensemble models
