@@ -131,7 +131,6 @@ class BatchNorm1DLayer:
         return out
 
     def backward(self, grad):
-        # print(grad.shape, self.x_norm.shape, self.gamma.shape)
         dx_norm = grad * self.gamma
         std = np.sqrt(self.var + self.eps)
 
@@ -144,51 +143,58 @@ class BatchNorm1DLayer:
         return dx
 
     def update(self, lr):
-        # print(self.dgamma.shape, self.gamma.shape)
         self.gamma -= lr * self.dgamma
         self.beta -= lr * self.dbeta
     
 class BatchNorm2DLayer:
-    def __init__(self, input_size, eps=1e-5, momentum=0.9):
-        self.input_size = input_size
+    def __init__(self, input_dim, eps=1e-5, momentum=0.9):
+        self.input_dim = input_dim
         self.eps = eps
         self.momentum = momentum
-        
-        self.gamma = np.ones((input_size, 1, 1))
-        self.beta = np.zeros((input_size, 1, 1))
-        
-        self.running_mean = np.zeros((input_size, 1, 1))
-        self.running_var = np.zeros((input_size, 1, 1))
+
+        self.running_mean = np.zeros((input_dim, 1))
+        self.running_var = np.ones((input_dim, 1))
+        self.gamma = np.ones((input_dim, 1))
+        self.beta = np.zeros((input_dim, 1))
 
     def forward(self, x, mode='train'):
         self.batch_size = x.shape[0]
-        self.x = x
-        self.mean = np.mean(x, axis=(0, 2, 3), keepdims=True)
-        self.var = np.var(x, axis=(0, 2, 3), keepdims=True)
-        
-        self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
-        self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
-    
-        self.x_hat = (x - self.mean) / np.sqrt(self.var + self.eps)
-        out = self.gamma * self.x_hat + self.beta
-        
+        if mode == 'train':
+            self.mean = np.mean(x, axis=(0, 2, 3)).reshape(self.input_dim, 1)
+            self.var = np.var(x, axis=(0, 2, 3)).reshape(self.input_dim, 1)
+            self.x = x
+
+            # update running mean and var
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
+
+            # normalize
+            self.x_norm = (x - self.mean) / np.sqrt(self.var + self.eps)
+
+        else:
+            self.x_norm = (x - self.running_mean) / np.sqrt(self.running_var + self.eps)
+
+        out = self.gamma * self.x_norm + self.beta
+
         return out
-    
+
     def backward(self, grad):
-        self.grad_gamma = np.sum(self.x_hat * grad, axis=(0, 2, 3), keepdims=True)
-        self.grad_beta = np.sum(grad, axis=(0, 2, 3), keepdims=True)
-        
-        self.grad_x_hat = self.gamma * grad
-        self.grad_var = np.sum(self.grad_x_hat * (self.x - self.mean) * -0.5 * (self.var + self.eps) ** -1.5, axis=(0, 2, 3), keepdims=True)
-        self.grad_mean = np.sum(self.grad_x_hat * -1 / np.sqrt(self.var + self.eps), axis=(0, 2, 3), keepdims=True)
-        
-        self.grad_x = self.grad_x_hat / np.sqrt(self.var + self.eps) + self.grad_var * 2 * (self.x - self.mean) / self.batch_size + self.grad_mean / self.batch_size
-        
-        return self.grad_x
-    
+        dx_norm = grad * self.gamma
+        std = np.sqrt(self.var + self.eps)
+
+        self.dgamma = np.sum(grad * self.x_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1)
+        self.dbeta = np.sum(grad, axis=(0, 2, 3)).reshape(self.input_dim, 1)
+
+        dx =  std * (self.batch_size * dx_norm - 
+                      np.sum(dx_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1) - 
+                      self.x_norm * np.sum(dx_norm * self.x_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1)) / self.batch_size
+        return dx
+
     def update(self, lr):
-        self.gamma -= lr * self.grad_gamma
-        self.beta -= lr * self.grad_beta
+        self.gamma -= lr * self.dgamma
+        self.beta -= lr * self.dbeta
+
+
 
 class Conv2DLayer:
     def __init__(self, input_size, output_size, kernel_size, stride, padding, biases=True):
