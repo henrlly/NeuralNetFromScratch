@@ -47,7 +47,7 @@ class DropoutLayer:
     def update(self, lr):
         pass
     
-class ReLuLayer:
+class ReLULayer:
     def __init__(self):
         self.x = None
 

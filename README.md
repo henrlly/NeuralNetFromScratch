@@ -3,7 +3,7 @@
 
 ## Features
  - Linear (fully connected) layer w/wo biases
- - ReLu
+ - ReLU
  - Tanh
  - Sigmoid
  - Softmax
