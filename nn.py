@@ -210,41 +210,34 @@ class Conv2DLayer:
         self.x = None
         self.grad_w = None
         self.grad_b = None
-
+    
     def forward(self, x, mode='train'):
         self.x = x
         self.batch_size = x.shape[0]
-        
-        self.x_padded = np.pad(x, ((0, 0), (0, 0), (self.padding, self.padding), (self.padding, self.padding)), 'constant')
-        
-        self.output_size = int((self.x_padded.shape[2] - self.kernel_size) / self.stride + 1)
-        
-        out = np.zeros((self.batch_size, self.output_size, self.output_size, self.output_size))
-        
-        for i in range(self.output_size):
+        self.x_pad = np.pad(x, ((0, 0), (0, 0), (self.padding, self.padding), (self.padding, self.padding)), 'constant')
+        self.out_size = int((self.x_pad.shape[2] - self.kernel_size) / self.stride + 1)
+        self.out = np.zeros((self.batch_size, self.output_size, self.out_size, self.out_size))
+        for i in range(self.batch_size):
             for j in range(self.output_size):
-                out[:, i, j, :] = np.sum(self.x_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size, np.newaxis] * self.w[np.newaxis, :, :, :, :], axis=(2, 3, 4))
-        
-        if self.biases:
-            out += self.b.T
-        
-        return out
+                for k in range(self.out_size):
+                    for l in range(self.out_size):
+                        self.out[i, j, k, l] = np.sum(self.x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size] * self.w[j]) + self.b[j]
+        return self.out
     
     def backward(self, grad):
-        self.grad_w = np.zeros_like(self.w)
-        self.grad_b = np.zeros_like(self.b)
-        
-        grad_padded = np.zeros_like(self.x_padded)
-        
-        for i in range(self.output_size):
+        self.grad_w = np.zeros(self.w.shape)
+        self.grad_b = np.zeros(self.b.shape)
+        self.grad_x = np.zeros(self.x.shape)
+        self.grad_x_pad = np.zeros(self.x_pad.shape)
+        for i in range(self.batch_size):
             for j in range(self.output_size):
-                self.grad_w += np.sum(grad[:, i, j, :, np.newaxis, np.newaxis, np.newaxis] * self.x_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size, np.newaxis], axis=0)
-                grad_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size] += np.sum(grad[:, i, j, :, np.newaxis, np.newaxis, np.newaxis] * self.w[np.newaxis, :, :, :, :], axis=1)
-        
-        if self.biases:
-            self.grad_b = np.sum(grad, axis=(0, 1, 2))[:, np.newaxis]
-        
-        return grad_padded[:, :, self.padding:self.padding+self.x.shape[2], self.padding:self.padding+self.x.shape[3]]
+                for k in range(self.out_size):
+                    for l in range(self.out_size):
+                        self.grad_w[j] += grad[i, j, k, l] * self.x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size]
+                        self.grad_b[j] += grad[i, j, k, l]
+                        self.grad_x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size] += grad[i, j, k, l] * self.w[j]
+        self.grad_x = self.grad_x_pad[:, :, self.padding : -self.padding, self.padding : -self.padding]
+        return self.grad_x
     
     def update(self, lr):
         self.w -= lr * self.grad_w
@@ -363,6 +356,17 @@ class MaxPool1DLayer:
             grad_padded[:, i*self.stride:i*self.stride+self.kernel_size, :] += grad[:, i, :, np.newaxis] * (self.indices[:, i, :, np.newaxis] == np.arange(self.kernel_size)[np.newaxis, np.newaxis, :])
         
         return grad_padded
+    
+class FlattenLayer:
+    def __init__(self):
+        self.x = None
+    
+    def forward(self, x, mode='train'):
+        self.x = x
+        return x.reshape(x.shape[0], -1)
+    
+    def backward(self, grad):
+        return grad.reshape(self.x.shape)
 
 class NeuralNetwork:
     def __init__(self, layers, input_size, output_size):
@@ -396,17 +400,19 @@ class NeuralNetwork:
     def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1, epoch_delay=50):
         self.loss_ls =[]
         self.acc_ls = []
+        x_len = x.shape[0]
         pbar = tqdm(range(epochs))
+
         for epoch in pbar:
-            x_batch = x[:batch_size]
-            y_batch = y[:batch_size]
+            indexes = np.random.choice(x_len, batch_size, replace=False)
+
+            x_batch = x[indexes]
+            y_batch = y[indexes]
             y_pred = self.forward(x_batch.T, mode='train')
             y_res = y_batch.T
             loss = self.loss(y_pred, y_res)
             self.backward(y_pred - y_res)
             self.update(lr)
-            x = np.roll(x, batch_size, axis=0)
-            y = np.roll(y, batch_size, axis=0)
             
             acc = self.accuracy(x_test, y_test)
             self.loss_ls.append(loss)
