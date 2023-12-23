@@ -1,488 +1,300 @@
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import pickle
 
-class LinearLayer:
-    def __init__(self, input_size, output_size, biases=True):
-        self.input_size = input_size
-        self.output_size = output_size
-        self.w = np.random.rand(output_size, input_size) - 0.5
-        self.b = np.random.rand(output_size, 1) - 0.5
-        self.x = None
-        self.grad_w = None
-        self.grad_b = None
-        self.biases = biases
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        return self.w.dot(x) + self.b
-    
-    def backward(self, grad):
-        self.grad_w = grad.dot(self.x.T) / grad.shape[1]
-        if self.biases:
-            self.grad_b = np.sum(grad, axis=1).reshape(self.output_size, 1) / grad.shape[1]
-        return self.w.T.dot(grad) # Next layer error
-    
-    def update(self, lr):
-        self.w -= lr * self.grad_w
-        if self.biases:
-            self.b -= lr * self.grad_b
-
-class DropoutLayer:
-    def __init__(self, p):
-        self.p = p
-        self.mask = None
-
-    def forward(self, x, mode='train'):
-        if mode == 'train':
-            self.mask = np.random.rand(*x.shape) > self.p
-            return x * self.mask
-        else:
-            return x
-    
-    def backward(self, grad):
-        return grad * self.mask
-    
-    def update(self, lr):
-        pass
-    
-class ReLULayer:
-    def __init__(self):
-        self.x = None
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        return np.maximum(x, 0)
-    
-    def backward(self, grad):
-        return grad * (self.x > 0)
-    
-    def update(self, lr):
-        pass
-    
-class SoftmaxLayer:
-    def forward(self, x, mode='train'):
-        return np.exp(x) / sum(np.exp(x))
-    
-    def backward(self, grad):
-        return grad
-    
-    def update(self, lr):
-        pass
-
-class TanhLayer:
-    def __init__(self):
-        self.x = None
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        return np.tanh(x)
-    
-    def backward(self, grad):
-        return grad * (1 - np.tanh(self.x) ** 2)
-    
-    def update(self, lr):
-        pass
-
-class SigmoidLayer:
-    def __init__(self):
-        self.x = None
-
-    def forward(self, x, mode='train'):
-        return  1 / (1 + np.exp(-x))
-    
-    def backward(self, grad):
-        return grad
-    
-    def update(self, lr):
-        pass
-
-class BatchNorm1DLayer:
-    def __init__(self, input_dim, eps=1e-5, momentum=0.9):
-        self.input_dim = input_dim
-        self.eps = eps
-        self.momentum = momentum
-
-        self.running_mean = np.zeros((input_dim, 1))
-        self.running_var = np.ones((input_dim, 1))
-        self.gamma = np.ones((input_dim, 1))
-        self.beta = np.zeros((input_dim, 1))
-
-    def forward(self, x, mode='train'):
-        self.batch_size = x.shape[1]
-        if mode == 'train':
-            self.mean = np.mean(x, axis=1).reshape(self.input_dim, 1)
-            self.var = np.var(x, axis=1).reshape(self.input_dim, 1)
-            self.x = x
-
-            # update running mean and var
-            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
-            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
-
-            # normalize
-            self.x_norm = (x - self.mean) / np.sqrt(self.var + self.eps)
-
-        else:
-            self.x_norm = (x - self.running_mean) / np.sqrt(self.running_var + self.eps)
-
-        out = self.gamma * self.x_norm + self.beta
-
-        return out
-
-    def backward(self, grad):
-        dx_norm = grad * self.gamma
-        std = np.sqrt(self.var + self.eps)
-
-        self.dgamma = np.sum(grad * self.x_norm, axis=1).reshape(self.input_dim, 1)
-        self.dbeta = np.sum(grad, axis=1).reshape(self.input_dim, 1)
-
-        dx =  std * (self.batch_size * dx_norm - 
-                      np.sum(dx_norm, axis=1).reshape(self.input_dim, 1) - 
-                      self.x_norm * np.sum(dx_norm * self.x_norm, axis=1).reshape(self.input_dim, 1)) / self.batch_size
-        return dx
-
-    def update(self, lr):
-        self.gamma -= lr * self.dgamma
-        self.beta -= lr * self.dbeta
-    
-class BatchNorm2DLayer:
-    def __init__(self, input_dim, eps=1e-5, momentum=0.9):
-        self.input_dim = input_dim
-        self.eps = eps
-        self.momentum = momentum
-
-        self.running_mean = np.zeros((input_dim, 1))
-        self.running_var = np.ones((input_dim, 1))
-        self.gamma = np.ones((input_dim, 1))
-        self.beta = np.zeros((input_dim, 1))
-
-    def forward(self, x, mode='train'):
-        self.batch_size = x.shape[0]
-        if mode == 'train':
-            self.mean = np.mean(x, axis=(0, 2, 3)).reshape(self.input_dim, 1)
-            self.var = np.var(x, axis=(0, 2, 3)).reshape(self.input_dim, 1)
-            self.x = x
-
-            # update running mean and var
-            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
-            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
-
-            # normalize
-            self.x_norm = (x - self.mean) / np.sqrt(self.var + self.eps)
-
-        else:
-            self.x_norm = (x - self.running_mean) / np.sqrt(self.running_var + self.eps)
-
-        out = self.gamma * self.x_norm + self.beta
-
-        return out
-
-    def backward(self, grad):
-        dx_norm = grad * self.gamma
-        std = np.sqrt(self.var + self.eps)
-
-        self.dgamma = np.sum(grad * self.x_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1)
-        self.dbeta = np.sum(grad, axis=(0, 2, 3)).reshape(self.input_dim, 1)
-
-        dx =  std * (self.batch_size * dx_norm - 
-                      np.sum(dx_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1) - 
-                      self.x_norm * np.sum(dx_norm * self.x_norm, axis=(0, 2, 3)).reshape(self.input_dim, 1)) / self.batch_size
-        return dx
-
-    def update(self, lr):
-        self.gamma -= lr * self.dgamma
-        self.beta -= lr * self.dbeta
-
-
-
-class Conv2DLayer:
-    def __init__(self, input_size, output_size, kernel_size, stride, padding, biases=True):
-        self.input_size = input_size
-        self.output_size = output_size
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.biases = biases
-        
-        self.w = np.random.rand(output_size, input_size, kernel_size, kernel_size) - 0.5
-        self.b = np.random.rand(output_size, 1) - 0.5
-        self.x = None
-        self.grad_w = None
-        self.grad_b = None
-    
-    def forward(self, x, mode='train'):
-        self.x = x
-        self.batch_size = x.shape[0]
-        self.x_pad = np.pad(x, ((0, 0), (0, 0), (self.padding, self.padding), (self.padding, self.padding)), 'constant')
-        self.out_size = int((self.x_pad.shape[2] - self.kernel_size) / self.stride + 1)
-        self.out = np.zeros((self.batch_size, self.output_size, self.out_size, self.out_size))
-        for i in range(self.batch_size):
-            for j in range(self.output_size):
-                for k in range(self.out_size):
-                    for l in range(self.out_size):
-                        self.out[i, j, k, l] = np.sum(self.x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size] * self.w[j]) + self.b[j]
-        return self.out
-    
-    def backward(self, grad):
-        self.grad_w = np.zeros(self.w.shape)
-        self.grad_b = np.zeros(self.b.shape)
-        self.grad_x = np.zeros(self.x.shape)
-        self.grad_x_pad = np.zeros(self.x_pad.shape)
-        for i in range(self.batch_size):
-            for j in range(self.output_size):
-                for k in range(self.out_size):
-                    for l in range(self.out_size):
-                        self.grad_w[j] += grad[i, j, k, l] * self.x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size]
-                        self.grad_b[j] += grad[i, j, k, l]
-                        self.grad_x_pad[i, :, k * self.stride : k * self.stride + self.kernel_size, l * self.stride : l * self.stride + self.kernel_size] += grad[i, j, k, l] * self.w[j]
-        self.grad_x = self.grad_x_pad[:, :, self.padding : -self.padding, self.padding : -self.padding]
-        return self.grad_x
-    
-    def update(self, lr):
-        self.w -= lr * self.grad_w
-        self.b -= lr * self.grad_b
-
-class Conv1DLayer:
-    def __init__(self, input_size, output_size, kernel_size, stride, padding, biases=True):
-        self.input_size = input_size
-        self.output_size = output_size
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.biases = biases
-        
-        self.w = np.random.rand(output_size, input_size, kernel_size) - 0.5
-        self.b = np.random.rand(output_size, 1) - 0.5
-        self.x = None
-        self.grad_w = None
-        self.grad_b = None
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        self.batch_size = x.shape[0]
-        
-        self.x_padded = np.pad(x, ((0, 0), (0, 0), (self.padding, self.padding)), 'constant')
-        
-        self.output_size = int((self.x_padded.shape[2] - self.kernel_size) / self.stride + 1)
-        
-        out = np.zeros((self.batch_size, self.output_size, self.output_size))
-        
-        for i in range(self.output_size):
-            out[:, i, :] = np.sum(self.x_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, np.newaxis] * self.w[np.newaxis, :, :, np.newaxis], axis=(2, 3))
-        
-        if self.biases:
-            out += self.b.T
-        
-        return out
-    
-    def backward(self, grad):
-        self.grad_w = np.zeros_like(self.w)
-        self.grad_b = np.zeros_like(self.b)
-        
-        grad_padded = np.zeros_like(self.x_padded)
-        
-        for i in range(self.output_size):
-            self.grad_w += np.sum(grad[:, i, :, np.newaxis, np.newaxis] * self.x_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, np.newaxis], axis=0)
-            grad_padded[:, :, i*self.stride:i*self.stride+self.kernel_size] += np.sum(grad[:, i, :, np.newaxis, np.newaxis] * self.w[np.newaxis, :, :, np.newaxis], axis=1)
-        
-        if self.biases:
-            self.grad_b = np.sum(grad, axis=(0, 1))[:, np.newaxis]
-        
-        return grad_padded[:, :, self.padding:self.padding+self.x.shape[2]]
-    
-    def update(self, lr):
-        self.w -= lr * self.grad_w
-        self.b -= lr * self.grad_b
-
-class MaxPool2DLayer:
-    def __init__(self, kernel_size, stride):
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.x = None
-        self.indices = None
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        self.batch_size = x.shape[0]
-        self.input_size = x.shape[1]
-        self.output_size = int((self.input_size - self.kernel_size) / self.stride + 1)
-        
-        out = np.zeros((self.batch_size, self.output_size, self.output_size, self.input_size))
-        self.indices = np.zeros((self.batch_size, self.output_size, self.output_size, self.input_size), dtype=np.int32)
-        
-        for i in range(self.output_size):
-            for j in range(self.output_size):
-                out[:, i, j, :] = np.max(self.x[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size], axis=(2, 3))
-                self.indices[:, i, j, :] = np.argmax(self.x[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size], axis=(2, 3))
-        
-        return out
-    
-    def backward(self, grad):
-        grad_padded = np.zeros_like(self.x)
-        
-        for i in range(self.output_size):
-            for j in range(self.output_size):
-                grad_padded[:, :, i*self.stride:i*self.stride+self.kernel_size, j*self.stride:j*self.stride+self.kernel_size] += grad[:, i, j, :, np.newaxis, np.newaxis, np.newaxis] * (self.indices[:, i, j, :, np.newaxis, np.newaxis, np.newaxis] == np.arange(self.kernel_size ** 2)[np.newaxis, np.newaxis, np.newaxis, :])
-        
-        return grad_padded
-    
-class MaxPool1DLayer:
-    def __init__(self, kernel_size, stride):
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.x = None
-        self.indices = None
-
-    def forward(self, x, mode='train'):
-        self.x = x
-        self.batch_size = x.shape[0]
-        self.input_size = x.shape[1]
-        self.output_size = int((self.input_size - self.kernel_size) / self.stride + 1)
-        
-        out = np.zeros((self.batch_size, self.output_size, self.input_size))
-        self.indices = np.zeros((self.batch_size, self.output_size, self.input_size), dtype=np.int32)
-        
-        for i in range(self.output_size):
-            out[:, i, :] = np.max(self.x[:, i*self.stride:i*self.stride+self.kernel_size, :], axis=2)
-            self.indices[:, i, :] = np.argmax(self.x[:, i*self.stride:i*self.stride+self.kernel_size, :], axis=2)
-        
-        return out
-    
-    def backward(self, grad):
-        grad_padded = np.zeros_like(self.x)
-        
-        for i in range(self.output_size):
-            grad_padded[:, i*self.stride:i*self.stride+self.kernel_size, :] += grad[:, i, :, np.newaxis] * (self.indices[:, i, :, np.newaxis] == np.arange(self.kernel_size)[np.newaxis, np.newaxis, :])
-        
-        return grad_padded
-    
-class FlattenLayer:
-    def __init__(self):
-        self.x = None
-    
-    def forward(self, x, mode='train'):
-        self.x = x
-        return x.reshape(x.shape[0], -1)
-    
-    def backward(self, grad):
-        return grad.reshape(self.x.shape)
 
 class NeuralNetwork:
-    def __init__(self, layers, input_size, output_size):
+    """
+    A class representing a neural network.
+
+    Attributes:
+    - layers (list): List of layers in the neural network.
+    - input_size (int): Size of the input layer.
+    - output_size (int): Size of the output layer.
+    - loss_fn (object): Loss function used for training the network.
+    - loss_ls (list): List to store the training loss per epoch.
+    - acc_ls (list): List to store the accuracy per epoch.
+
+    Methods:
+    - __init__(layers, input_size, output_size, loss_fn): Initializes the NeuralNetwork class.
+    - forward(x, mode="train"): Forward propagate across each layer.
+    - backward(grad): Backpropagate across each layer in reverse order.
+    - update(lr): Update the learning rate of each layer.
+    - train(x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1, epoch_delay=50): Train the neural network using minibatched SGD and an optional learning rate decay.
+    - accuracy(x, y): Calculate the accuracy of the model given input x and labels y.
+    - predict(x): Predict the class index for input x.
+    - plot_loss(): Plot a loss per epoch line graph.
+    - plot_acc(): Plot an accuracy per epoch line graph.
+    - test_pred(index, x, y): Plot the image at index in the test set and print the predicted label.
+    - save(filename): Save the model into a Pickle file.
+    """
+
+    def __init__(self, layers, input_size, output_size, loss_fn):
+        """
+        Initializes a neural network object.
+
+        Args:
+        - layers (list): List of integers representing the number of neurons in each layer.
+        - input_size (int): Number of input features.
+        - output_size (int): Number of output classes.
+        - loss_fn (function): Loss function used for training the network.
+        """
+
         self.input_size = input_size
         self.output_size = output_size
         self.layers = layers
-        self.loss_ls =[]
+        self.loss_fn = loss_fn
+        self.loss_ls = []
         self.acc_ls = []
 
+    def forward(self, x, mode="train"):
+        """
+        Forward propagate across each layer.
 
-    def forward(self, x, mode='train'):
+        Args:
+        - x (ndarray): Input data.
+        - mode (str): Mode of operation. Default is "train".
+        """
+
         for layer in self.layers:
             x = layer.forward(x, mode)
         return x
-    
+
     def backward(self, grad):
+        """
+        Backpropagate across each layer in reverse order.
+
+        Args:
+        - grad (ndarray): Gradient of the loss function.
+        """
+
         for layer in reversed(self.layers):
             grad = layer.backward(grad)
-    
+
     def update(self, lr):
+        """
+        Update the learning rate of each layer.
+
+        Args:
+        - lr (float): Learning rate.
+        """
+
         for layer in self.layers:
             layer.update(lr)
 
-    def loss(self, y_pred, y_res):
-        y_pred = np.maximum(y_pred, 1e-9)
-        return np.sum(-y_res * np.log(y_pred)) / y_pred.shape[1]
-    
-    def grad(self, y_pred, y_res):
-        return -y_res * np.log(y_pred)
+    def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1):
+        """
+        Train the neural network with minibatched SGD and an optional learning rate decay.
+        Display epoch, lr, training loss, and test data accuracy with a tqdm progress bar.
 
-    def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1, epoch_delay=50):
-        self.loss_ls =[]
+        Args:
+        - x (ndarray): Training data.
+        - y (ndarray): Training labels.
+        - lr (float): Initial earning rate.
+        - epochs (int): Number of training epochs.
+        - batch_size (int): Size of each minibatch.
+        - x_test (ndarray): Test data.
+        - y_test (ndarray): Test labels.
+        - lr_decay (float): Learning rate decay factor. Default is 1. Exponential decay.
+        """
+
+        # Record training loss and accuracy per epoch
+        self.loss_ls = []
         self.acc_ls = []
-        x_len = x.shape[0]
+
+        # Progress bar for tracking minibatches
         pbar = tqdm(range(epochs))
 
+        x_len = x.shape[0]  # No. of training examples
+
         for epoch in pbar:
-            indexes = np.random.choice(x_len, batch_size, replace=False)
+            # Shuffle x and y
+            indexes = np.arange(x_len)
+            np.random.shuffle(indexes)
+            x = x[indexes]
+            y = y[indexes]
 
-            x_batch = x[indexes]
-            y_batch = y[indexes]
-            y_pred = self.forward(x_batch.T, mode='train')
-            y_res = y_batch.T
-            loss = self.loss(y_pred, y_res)
-            self.backward(y_pred - y_res)
-            self.update(lr)
-            
-            acc = self.accuracy(x_test, y_test)
-            self.loss_ls.append(loss)
-            self.acc_ls.append(acc)
+            # Progress bar for tracking minibatches
+            # pbar = tqdm(range(x_len // batch_size))
 
-            if epoch and epoch % epoch_delay == 0: # learning rate decay
-                lr /= lr_decay
+            # One entire passthrough of data
+            for i in range(x_len // batch_size):
+                # Select batch's features and labels
+                x_batch = x[
+                    i * batch_size : (i + 1) * batch_size
+                ]  # (batch_size, input_size)
+                y_batch = y[
+                    i * batch_size : (i + 1) * batch_size
+                ]  # (batch_size, output_size)
 
-            pbar.set_description('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss, acc))
+                # Forward propagate, set mode to train to accumulate gradients
+                y_pred = self.forward(x_batch, mode="train")
+
+                # Calculate training loss
+                loss = self.loss_fn.get_loss(y_pred, y_batch)
+
+                # Backprop loss
+                self.backward(self.loss_fn.get_grad(y_pred, y_batch))
+
+                # Calculate test accuracy
+                acc = self.accuracy(x_test, y_test)
+
+                # Store loss and accuracy (to plot later)
+                self.loss_ls.append(loss)
+                self.acc_ls.append(acc)
+
+                # Calculate new learning rate (according to exponential decay schedule)
+                new_lr = (lr_decay**epoch) * lr
+
+                # Update layers' learning rate with new learning rate
+                self.update(new_lr)
+
+                # Update Epoch, Loss and Accuracy in progress bar description
+                pbar.set_description(
+                    f"Epoch: {epoch+1}, Loss: {loss:.4f}, Accuracy: {acc:.4f} LR: {new_lr:.4f}"
+                )
+
         pbar.close()
-    
+
     def accuracy(self, x, y):
-        y_pred = self.forward(x.T, mode='test')
-        y_res = y.T
-        return np.sum(np.argmax(y_pred, axis=0) == np.argmax(y_res, axis=0)) / y.shape[0]
-    
+        """
+        Calculate the accuracy (0.0 - 1.0) of the model given input x and labels y.
+
+        Args:
+        - x (ndarray): Input data.
+        - y (ndarray): Labels.
+
+        Returns:
+        - float: Accuracy of the model.
+        """
+
+        y_pred = self.forward(x, mode="test")
+        return np.sum(np.argmax(y_pred, axis=1) == np.argmax(y, axis=1)) / y.shape[0]
+
     def predict(self, x):
-        y_pred = self.forward(x.T, mode='test')
-        return np.argmax(y_pred, axis=0)
-    
+        """
+        Predict the class index for input x.
+
+        Args:
+        - x (ndarray): Input data.
+
+        Returns:
+        - ndarray: Predicted class index.
+        """
+
+        y_pred = self.forward(x, mode="test")
+        return np.argmax(y_pred, axis=1)
+
     def plot_loss(self):
+        """
+        Plot a loss per epoch line graph.
+        """
+
         plt.plot(self.loss_ls)
-        plt.title('Cross Entropy Loss per Epoch')
-        plt.xlabel('Epoch')
-        plt.ylabel('Cross Entropy Loss')
+        plt.title(f"{self.loss_fn.get_name()} per Epoch")
+        plt.xlabel("Epoch")
+        plt.ylabel(self.loss_fn.get_name())
         plt.show()
 
     def plot_acc(self):
+        """
+        Plot an accuracy per epoch line graph.
+        """
+
         plt.plot(self.acc_ls)
-        plt.title('Accuracy per Epoch')
-        plt.xlabel('Epoch')
-        plt.ylabel('Accuracy')
+        plt.title("Accuracy per Epoch")
+        plt.xlabel("Epoch")
+        plt.ylabel("Accuracy")
         plt.show()
 
     def test_pred(self, index, x, y):
-        '''
-        Plot the image at index in the test set and print the predicted label
-        '''
-        y_pred = self.forward(x.T[:, index, None], mode='test')
-        y_res = np.argmax(y_pred, 0)
+        """
+        Plot the image at index in the test set and print the predicted label.
 
-        print('Predicted:', y_res[0])
-        print('Actual:', np.argmax(y.T[:, index, None], 0)[0])
+        Args:
+        - index (int): Index of the image in the test set.
+        - x (ndarray): Test data.
+        - y (ndarray): Test labels.
+        """
+
+        y_pred = self.forward(x[None, index, :], mode="test")
+
+        print("Predicted:", np.argmax(y_pred, 1)[0])
+        print("Actual:", np.argmax(y[index, :]))
+
         plt.figure()
-        plt.imshow(x.T[:, index, None].reshape((28, 28)), cmap='gray')
+        plt.imshow(x[None, index, :].reshape((28, 28)), cmap="gray")
 
     def save(self, filename):
-        with open(filename, 'wb+') as f:
+        """
+        Save the model into a Pickle file.
+
+        Args:
+        - filename (str): Name of the file to save the model.
+        """
+
+        with open(filename, "wb+") as f:
             pickle.dump(self, f)
-        
+
 
 def score_ensemble_mean(models, x, y):
-    y_pred = np.zeros((models[0].output_size, x.shape[0]))
+    """
+    Scores the ensemble of models with soft voting (highest mean probability)
+
+    Args:
+    - models (list): A list of models to be used in the ensemble.
+    - x (ndarray): Input data for prediction.
+    - y (ndarray): True labels for the input data.
+
+    Returns:
+    - float: The accuracy score of the ensemble of models.
+    """
+    # Create empty y_pred
+    y_pred = np.zeros((x.shape[0], models[0].output_size))
+
     for model in models:
-        y_pred += model.forward(x.T, mode='test')
-    return np.sum(np.argmax(y_pred, axis=0) == np.argmax(y.T, axis=0)) / y.shape[0]
+        # Add probabilities prediction from each model
+        y_pred += model.forward(x, mode="test")
+
+    # Sum up correct predictions and divide by no. of predictions
+    return np.sum(np.argmax(y_pred, axis=1) == np.argmax(y, axis=1)) / y.shape[0]
+
 
 def score_ensemble_mode(models, x, y):
-    y_pred = np.zeros((models[0].output_size, x.shape[0]))
-    for model in models:
-        y_pred += one_hot_encode(np.argmax(model.forward(x.T, mode='test'), axis=0)).T
-    return np.sum(np.argmax(y_pred, axis=0) == np.argmax(y.T, axis=0)) / y.shape[0]
+    """
+    Scores of the ensemble of models with hard voting (most votes)
 
-def one_hot_encode(preds):
-    encoding = np.zeros((len(preds), 10))
-    for i, val in enumerate(preds):
-        encoding[i, val] = 1
-    return encoding
+    Args:
+    - models (list): A list of models to be used in the ensemble.
+    - x (ndarray): Input data for prediction.
+    - y (ndarray): True labels for the input data.
+
+    Returns:
+    - float: The accuracy score of the ensemble of models.
+    """
+
+    # Create empty y_pred
+    y_pred = np.zeros((x.shape[0], models[0].output_size))
+
+    for model in models:
+        # Add one-hot encoded prediction from each model
+        y_pred += np.eye(y.shape[1])[np.argmax(model.forward(x, mode="test"), axis=1)]
+
+    # Sum up correct predictions and divide by no. of predictions
+    return np.sum(np.argmax(y_pred, axis=1) == np.argmax(y, axis=1)) / y.shape[0]
+
 
 def load_model(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
+    """
+    Load model from Pickle file
 
+    Args:
+    - filename (str): The path to the Pickle file containing the model.
+
+    Returns:
+    - object: The loaded model object.
+    """
+
+    with open(filename, "rb") as f:
+        return pickle.load(f)

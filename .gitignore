@@ -1,5 +1,4 @@
-mnist_test.csv
-mnist_train.csv
+/data
 /models
 /models_CNN
 /__pycache__
