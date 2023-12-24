@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+import layer as ly
+
 
 class NeuralNetwork:
     """
@@ -30,7 +32,9 @@ class NeuralNetwork:
     - save(filename): Save the model into a Pickle file.
     """
 
-    def __init__(self, layers, input_size, output_size, loss_fn):
+    def __init__(
+        self, layers, input_size, output_size, loss_fn, norm=None, norm_alpha=1e-5
+    ):
         """
         Initializes a neural network object.
 
@@ -45,6 +49,8 @@ class NeuralNetwork:
         self.output_size = output_size
         self.layers = layers
         self.loss_fn = loss_fn
+        self.norm = norm
+        self.norm_alpha = norm_alpha
         self.loss_ls = []
         self.acc_ls = []
 
@@ -81,7 +87,11 @@ class NeuralNetwork:
         """
 
         for layer in self.layers:
-            layer.update(lr)
+            if isinstance(layer, ly.LinearLayer):
+                # Additional weight decay term if linear layer
+                layer.update(lr, norm=self.norm, norm_alpha=self.norm_alpha)
+            else:
+                layer.update(lr)
 
     def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1):
         """

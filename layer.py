@@ -36,6 +36,8 @@ class LinearLayer:
         """
         self.input_size = input_size
         self.output_size = output_size
+
+        # Initialise weights and biases with uniform random distribution and mean of 0
         self.w = np.random.rand(output_size, input_size) - 0.5
         self.b = np.random.rand(output_size) - 0.5
         self.x = None
@@ -83,13 +85,25 @@ class LinearLayer:
 
         return grad.dot(self.w)
 
-    def update(self, lr):
+    def update(self, lr, norm=None, norm_alpha=1e-5):
         """
         Updates the weights and biases of the linear layer using gradient descent.
 
         Args:
         - lr (float): The learning rate.
         """
+
+        # Weight decay / regularisation by L1 (Lasso) or L2 (Ridge) normalisation
+        if norm == "l1":
+            # Regularisation term = abs(weight)
+            # Gradient = sign(weight) or weight / abs(weight)
+            self.w -= lr * norm_alpha * np.sign(self.w)
+
+        elif norm == "l2":
+            # Regularisation term = 1/2 * (weight ** 2)
+            # Gradient = weight
+            self.w -= lr * norm_alpha * self.w
+
         self.w -= lr * self.grad_w
         if self.biases:
             self.b -= lr * self.grad_b
