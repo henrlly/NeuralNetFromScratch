@@ -4,13 +4,14 @@ Annotated neural net from scratch with Numpy
 
 ## Features
 
-- Linear (fully connected) layer
-- ReLU
-- Tanh
-- Sigmoid
-- Softmax
-- Dropout
-- Batch normalisation
+- Layers
+  - Linear
+  - ReLU
+  - Tanh
+  - Sigmoid
+  - Softmax
+  - Dropout
+  - Batch normalisation
 - Learning rate decay (exponential)
 - Ensemble models
 - Save and load models

@@ -56,6 +56,7 @@ class LinearLayer:
         """
         self.x = x
 
+        # f(x) = x . Weights.T + Biases
         return x.dot(self.w.T) + (self.b if self.biases else 0)
 
     def backward(self, grad):
@@ -70,10 +71,16 @@ class LinearLayer:
         - ndarray: The gradient of the loss with respect to the input of the linear layer,
                      of shape (batch_size, input_size).
         """
+
+        # Calculate gradients for weights
+        # Divide by batch size to stabalise gradients
         self.grad_w = grad.T.dot(self.x) / grad.shape[0]
 
         if self.biases:
+            # Calculate gradients for biases
+            # Divide by batch size to stabalise gradients
             self.grad_b = np.sum(grad, axis=0) / grad.shape[0]
+
         return grad.dot(self.w)
 
     def update(self, lr):
@@ -119,6 +126,8 @@ class DropoutLayer:
         """
         if mode == "train":
             self.mask = np.random.rand(*x.shape) > self.p
+
+            # Zero out neurons with probability p
             return x * self.mask
         else:
             return x
@@ -133,6 +142,8 @@ class DropoutLayer:
         Returns:
         - ndarray: The gradient of the loss with respect to the input of the dropout layer.
         """
+
+        # Only propagate gradients whose neurons were not zeroed out
         return grad * self.mask
 
     def update(self, lr):
@@ -165,6 +176,8 @@ class ReLULayer:
         - Output of the ReLU layer.
         """
         self.x = x
+
+        # Zero out negative neurons
         return np.maximum(x, 0)
 
     def backward(self, grad):
@@ -177,6 +190,8 @@ class ReLULayer:
         Returns:
         - Gradient of the loss with respect to the input of the ReLU layer.
         """
+
+        # Only propagate gradients whose neurons were not zeroed out
         return grad * (self.x > 0)
 
     def update(self, lr):
@@ -205,9 +220,9 @@ class SoftmaxLayer:
         Returns:
         - ndarray: Output of the softmax layer.
         """
-        # stabilize it (prevent very large or very small x)
+        # Stabilize exp (by preventing very large or very small x)
         e_x = np.exp(x - np.max(x))
-        return e_x / np.repeat(e_x.sum(axis=1), 10).reshape(e_x.shape)
+        return e_x / np.repeat(e_x.sum(axis=1), x.shape[1]).reshape(x.shape)
 
     def backward(self, grad):
         """
