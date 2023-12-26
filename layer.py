@@ -97,11 +97,13 @@ class LinearLayer:
         if norm == "l1":
             # Regularisation term = abs(weight)
             # Gradient = sign(weight) or weight / abs(weight)
+            # Results in sparse weights
             self.w -= lr * norm_alpha * np.sign(self.w)
 
         elif norm == "l2":
             # Regularisation term = 1/2 * (weight ** 2)
             # Gradient = weight
+            # Reduces magnitude of weights with large magnitude
             self.w -= lr * norm_alpha * self.w
 
         self.w -= lr * self.grad_w
@@ -112,6 +114,7 @@ class LinearLayer:
 class DropoutLayer:
     """
     A class representing a dropout layer in a neural network.
+    Dropout masks neurons with probability p, creating an (exponentially large) ensemble of sub-networks.
 
     Attributes:
     - p (float): The probability of dropping out a neuron.
@@ -144,7 +147,10 @@ class DropoutLayer:
             # Zero out neurons with probability p
             return x * self.mask
         else:
-            return x
+            # In test mode, output is multiplied by 1 - p (retention probability)
+            # so expected output is the same as the actual output
+            # See: Weight scaling inference rule
+            return x * (1 - self.p)
 
     def backward(self, grad):
         """

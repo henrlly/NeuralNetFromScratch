@@ -1,6 +1,6 @@
 # NeuralNetFromScratch
 
-Annotated neural net from scratch with Numpy
+Annotated neural net from scratch with NumPy
 
 ## Features
 
@@ -14,7 +14,8 @@ Annotated neural net from scratch with Numpy
   - Batch normalisation
 - Weight decay (L1 and L2 normalisation)
 - Learning rate decay (exponential)
-- Ensemble models
+- Early stopping
+- Inference and (hard and soft) scoring with an ensemble of models
 - Save and load models
 
 ## Results
@@ -22,4 +23,4 @@ Annotated neural net from scratch with Numpy
 - MNIST dataset
   - Ensemble of 10 fully connected networks
     - Trained with SGD over 128 epoches, batch size of 1000 per epoch
-    - **96.93%** accuracy on test set
+    - **96.97%** accuracy on test set

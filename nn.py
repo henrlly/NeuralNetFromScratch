@@ -52,7 +52,8 @@ class NeuralNetwork:
         self.norm = norm
         self.norm_alpha = norm_alpha
         self.loss_ls = []
-        self.acc_ls = []
+        self.test_loss_ls = []
+        self.test_acc_ls = []
 
     def forward(self, x, mode="train"):
         """
@@ -93,7 +94,18 @@ class NeuralNetwork:
             else:
                 layer.update(lr)
 
-    def train(self, x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1):
+    def train(
+        self,
+        x,
+        y,
+        lr,
+        epochs,
+        batch_size,
+        x_test,
+        y_test,
+        lr_decay=1,
+        early_stopping=-1,
+    ):
         """
         Train the neural network with minibatched SGD and an optional learning rate decay.
         Display epoch, lr, training loss, and test data accuracy with a tqdm progress bar.
@@ -106,12 +118,20 @@ class NeuralNetwork:
         - batch_size (int): Size of each minibatch.
         - x_test (ndarray): Test data.
         - y_test (ndarray): Test labels.
-        - lr_decay (float): Learning rate decay factor. Default is 1. Exponential decay.
+        - lr_decay (float): Learning rate decay factor for exponential decay. Default is 1, no decay.
+        - early_stopping (int): Number of epochs to wait for improvement in test accuracy before stopping training. Default is -1, which means early stopping is disabled.
         """
 
         # Record training loss and accuracy per epoch
         self.loss_ls = []
-        self.acc_ls = []
+        self.test_loss_ls = []
+        self.test_acc_ls = []
+
+        # Max test (validation) loss
+        min_loss = np.inf
+
+        # Count rounds for early stopping
+        stopping_rounds = 0
 
         # Progress bar for tracking minibatches
         pbar = tqdm(range(epochs))
@@ -119,14 +139,18 @@ class NeuralNetwork:
         x_len = x.shape[0]  # No. of training examples
 
         for epoch in pbar:
+            # Break if early stopping
+            if early_stopping != -1 and stopping_rounds > early_stopping:
+                break
+
             # Shuffle x and y
             indexes = np.arange(x_len)
             np.random.shuffle(indexes)
             x = x[indexes]
             y = y[indexes]
 
-            # Progress bar for tracking minibatches
-            # pbar = tqdm(range(x_len // batch_size))
+            # Track total test loss per epoch
+            total_test_loss = 0
 
             # One entire passthrough of data
             for i in range(x_len // batch_size):
@@ -144,15 +168,25 @@ class NeuralNetwork:
                 # Calculate training loss
                 loss = self.loss_fn.get_loss(y_pred, y_batch)
 
-                # Backprop loss
+                # Backpropagate loss
                 self.backward(self.loss_fn.get_grad(y_pred, y_batch))
 
-                # Calculate test accuracy
-                acc = self.accuracy(x_test, y_test)
+                # Get test predictions
+                test_pred = self.forward(x_test, mode="test")
 
-                # Store loss and accuracy (to plot later)
+                # Calculate test loss
+                test_loss = self.loss_fn.get_loss(test_pred, y_test)
+
+                # Calculate test accuracy
+                test_acc = self.accuracy(test_pred, y_test)
+
+                # Store training loss, test loss and test accuracy (to plot later)
                 self.loss_ls.append(loss)
-                self.acc_ls.append(acc)
+                self.test_loss_ls.append(test_loss)
+                self.test_acc_ls.append(test_acc)
+
+                # Add test loss to total test loss per epoch
+                total_test_loss += test_loss
 
                 # Calculate new learning rate (according to exponential decay schedule)
                 new_lr = (lr_decay**epoch) * lr
@@ -162,24 +196,28 @@ class NeuralNetwork:
 
                 # Update Epoch, Loss and Accuracy in progress bar description
                 pbar.set_description(
-                    f"Epoch: {epoch+1}, Loss: {loss:.4f}, Accuracy: {acc:.4f} LR: {new_lr:.4f}"
+                    f"Epoch: {epoch+1}, Train Loss: {loss:.4f}, Val Loss: {test_loss:.4f}, Val Accuracy: {test_acc:.4f}, LR: {new_lr:.4f}"
                 )
+
+            # Early stopping
+            if total_test_loss < min_loss:
+                min_loss = total_test_loss
+            else:
+                stopping_rounds += 1
 
         pbar.close()
 
-    def accuracy(self, x, y):
+    def accuracy(self, y_pred, y):
         """
-        Calculate the accuracy (0.0 - 1.0) of the model given input x and labels y.
+        Calculates the accuracy of the predicted values.
 
-        Args:
-        - x (ndarray): Input data.
-        - y (ndarray): Labels.
+        Parameters:
+        - y_pred (ndarray): The predicted values.
+        - y (ndarray): The true values.
 
         Returns:
-        - float: Accuracy of the model.
+        - float: The accuracy of the predictions.
         """
-
-        y_pred = self.forward(x, mode="test")
         return np.sum(np.argmax(y_pred, axis=1) == np.argmax(y, axis=1)) / y.shape[0]
 
     def predict(self, x):
@@ -201,10 +239,12 @@ class NeuralNetwork:
         Plot a loss per epoch line graph.
         """
 
-        plt.plot(self.loss_ls)
+        plt.plot(self.loss_ls, label="Training Loss")
+        plt.plot(self.test_loss_ls, label="Test Loss")
         plt.title(f"{self.loss_fn.get_name()} per Epoch")
         plt.xlabel("Epoch")
         plt.ylabel(self.loss_fn.get_name())
+        plt.legend()
         plt.show()
 
     def plot_acc(self):
@@ -212,7 +252,7 @@ class NeuralNetwork:
         Plot an accuracy per epoch line graph.
         """
 
-        plt.plot(self.acc_ls)
+        plt.plot(self.test_acc_ls)
         plt.title("Accuracy per Epoch")
         plt.xlabel("Epoch")
         plt.ylabel("Accuracy")
