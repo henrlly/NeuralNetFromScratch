@@ -1,34 +1,16 @@
 import numpy as np
 
 
-class CrossEntropy:
+class Loss:
     """
-    A class that represents the Cross Entropy loss function.
-
-    Attributes:
-    - min_val (float): Minimum value to prevent log(<=0).
-    - set_mean (bool): Whether to divide the loss by batch_size.
-    - name (str): The name of the loss function.
-
-    Methods:
-    - __init__(min_val=1e-9, set_mean=True): Initializes the CrossEntropy loss function.
-    - get_name(): Returns the name of the loss function.
-    - get_loss(y_pred, y_res): Calculates the CrossEntropy loss.
-    - get_grad(y_pred, y_res): Calculates the gradient of the CrossEntropy loss.
+    Base class for a loss function.
     """
 
-    def __init__(self, min_val=1e-9, set_mean=True):
+    def __init__(self):
         """
-        Initializes the CrossEntropy loss function.
-
-        Args:
-        - min_val (float, optional): Minimum value to prevent log(<=0). Defaults to 1e-9.
-        - set_mean (bool, optional): Whether to divide the loss by batch_size. Defaults to True.
+        Initialises the loss function.
         """
-
-        self.min_val = min_val
-        self.set_mean = set_mean
-        self.name = "Cross Entropy Loss"
+        self.name = "Loss"
 
     def get_name(self):
         """
@@ -42,23 +24,21 @@ class CrossEntropy:
 
     def get_loss(self, y_pred, y_res):
         """
-        Calculates the CrossEntropy loss.
+        Calculates the loss.
 
         Args:
         - y_pred (ndarray): The predicted values.
         - y_res (ndarray): The true values.
 
         Returns:
-            float: The calculated loss.
+        - float: The calculated loss.
         """
 
-        return -np.sum(y_res * np.log(np.maximum(y_pred, self.min_val))) / (
-            y_pred.shape[0] if self.set_mean else 1
-        )
+        raise NotImplementedError
 
     def get_grad(self, y_pred, y_res):
         """
-        Calculates the gradient of the CrossEntropy loss.
+        Calculates the gradient of the loss.
 
         Args:
         - y_pred (ndarray): The predicted values.
@@ -68,4 +48,50 @@ class CrossEntropy:
         - ndarray: The calculated gradient.
         """
 
+        raise NotImplementedError
+
+
+class CrossEntropy(Loss):
+    """
+    Cross Entropy loss function.
+    """
+
+    def __init__(self, min_val=1e-9):
+        """
+        Initialises the CrossEntropy loss function.
+
+        Args:
+        - min_val (float, optional): Minimum value to prevent log(<=0). Defaults to 1e-9.
+        """
+        super().__init__()
+        self.min_val = min_val
+        self.name = "Cross Entropy Loss"
+
+    def get_loss(self, y_pred, y_res):
+        return (
+            -np.sum(y_res * np.log(np.maximum(y_pred, self.min_val))) / y_pred.shape[0]
+        )
+
+    def get_grad(self, y_pred, y_res):
         return y_pred - y_res
+
+
+class MSE(Loss):
+    """
+    Mean Squared Error loss function.
+    """
+
+    def __init__(self):
+        """
+        Initialises the MSE loss function.
+        """
+        super().__init__()
+        self.name = "Mean Squared Error Loss"
+
+    def get_loss(self, y_pred, y_res):
+        # Average over batch size and number of output neurons
+        return np.sum((y_pred - y_res) ** 2) / (2 * np.prod(y_pred.shape))
+
+    def get_grad(self, y_pred, y_res):
+        # Average over number of output neurons
+        return (y_pred - y_res) / np.prod(y_pred.shape[1:])

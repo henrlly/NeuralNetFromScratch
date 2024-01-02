@@ -2,58 +2,41 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-
-import layer as ly
+from copy import deepcopy
 
 
 class NeuralNetwork:
     """
     A class representing a neural network.
-
-    Attributes:
-    - layers (list): List of layers in the neural network.
-    - input_size (int): Size of the input layer.
-    - output_size (int): Size of the output layer.
-    - loss_fn (object): Loss function used for training the network.
-    - loss_ls (list): List to store the training loss per epoch.
-    - acc_ls (list): List to store the accuracy per epoch.
-
-    Methods:
-    - __init__(layers, input_size, output_size, loss_fn): Initializes the NeuralNetwork class.
-    - forward(x, mode="train"): Forward propagate across each layer.
-    - backward(grad): Backpropagate across each layer in reverse order.
-    - update(lr): Update the learning rate of each layer.
-    - train(x, y, lr, epochs, batch_size, x_test, y_test, lr_decay=1, epoch_delay=50): Train the neural network using minibatched SGD and an optional learning rate decay.
-    - accuracy(x, y): Calculate the accuracy of the model given input x and labels y.
-    - predict(x): Predict the class index for input x.
-    - plot_loss(): Plot a loss per epoch line graph.
-    - plot_acc(): Plot an accuracy per epoch line graph.
-    - test_pred(index, x, y): Plot the image at index in the test set and print the predicted label.
-    - save(filename): Save the model into a Pickle file.
     """
 
     def __init__(
-        self, layers, input_size, output_size, loss_fn, norm=None, norm_alpha=1e-5
+        self,
+        layers,
+        input_size,
+        output_size,
     ):
         """
-        Initializes a neural network object.
+        Initialises a neural network object.
 
         Args:
-        - layers (list): List of integers representing the number of neurons in each layer.
+        - layers (list): List of Layers.
         - input_size (int): Number of input features.
         - output_size (int): Number of output classes.
-        - loss_fn (function): Loss function used for training the network.
         """
 
         self.input_size = input_size
         self.output_size = output_size
         self.layers = layers
-        self.loss_fn = loss_fn
-        self.norm = norm
-        self.norm_alpha = norm_alpha
+        self.loss_fn = None
+        self.norm = None
+        self.norm_alpha = None
         self.loss_ls = []
-        self.test_loss_ls = []
-        self.test_acc_ls = []
+        self.acc_ls = []
+        self.val_loss_ls = []
+        self.val_acc_ls = []
+        self.optimiser = []
+        self.lr = None
 
     def forward(self, x, mode="train"):
         """
@@ -63,9 +46,18 @@ class NeuralNetwork:
         - x (ndarray): Input data.
         - mode (str): Mode of operation. Default is "train".
         """
-
+        i = 0
         for layer in self.layers:
+            if layer.is_trainable() and mode == "train":
+                # Interim update params (for Nesterov momentum)
+                self.optimiser[i].train_update()
+
             x = layer.forward(x, mode)
+
+            if layer.is_trainable() and mode == "train":
+                # Interim unupdate params (for Nesterov momentum)
+                self.optimiser[i].train_unupdate()
+                i += 1
         return x
 
     def backward(self, grad):
@@ -79,55 +71,90 @@ class NeuralNetwork:
         for layer in reversed(self.layers):
             grad = layer.backward(grad)
 
-    def update(self, lr):
+    def update(self):
         """
         Update the learning rate of each layer.
 
         Args:
         - lr (float): Learning rate.
         """
-
+        i = 0
         for layer in self.layers:
-            if isinstance(layer, ly.LinearLayer):
-                # Additional weight decay term if linear layer
-                layer.update(lr, norm=self.norm, norm_alpha=self.norm_alpha)
-            else:
-                layer.update(lr)
+            if layer.is_trainable():
+                self.optimiser[i].update(layer.get_grads())
+                i += 1
+
+    def init_optimiser(self, optimiser):
+        """
+        Initialise the optimiser for the neural network.
+
+        Args:
+        - optimiser (object): Optimiser object.
+        """
+        self.optimiser = []
+        self.lr = optimiser.get_lr()
+        for layer in self.layers:
+            if layer.is_trainable():
+                # Create deepcopy of optimiser for each trainable layer
+                optim = deepcopy(optimiser)
+                # Set param for each optimiser
+                optim.set_params(layer.get_params())
+                self.optimiser.append(optim)
 
     def train(
         self,
         x,
         y,
-        lr,
         epochs,
         batch_size,
-        x_test,
-        y_test,
-        lr_decay=1,
+        x_val,
+        y_val,
         early_stopping=-1,
+        loss_fn=None,
+        norm=None,
+        norm_alpha=0.0,
+        optimiser=None,
     ):
         """
         Train the neural network with minibatched SGD and an optional learning rate decay.
-        Display epoch, lr, training loss, and test data accuracy with a tqdm progress bar.
+        Display epoch, training loss and accuracy, and validation loss and accuracy with a tqdm progress bar.
 
         Args:
-        - x (ndarray): Training data.
-        - y (ndarray): Training labels.
-        - lr (float): Initial earning rate.
+        - x (ndarray): Input data for training.
+        - y (ndarray): Target data for training.
         - epochs (int): Number of training epochs.
-        - batch_size (int): Size of each minibatch.
-        - x_test (ndarray): Test data.
-        - y_test (ndarray): Test labels.
-        - lr_decay (float): Learning rate decay factor for exponential decay. Default is 1, no decay.
-        - early_stopping (int): Number of epochs to wait for improvement in test accuracy before stopping training. Default is -1, which means early stopping is disabled.
+        - batch_size (int): Size of each training batch.
+        - x_val (ndarray): Input data for validation.
+        - y_val (ndarray): Target data for validation.
+        - early_stopping (int, optional): Number of epochs to wait for improvement in validation loss before early stopping. Defaults to -1.
+        - loss_fn (LossFunction, optional): Loss function to calculate the training loss. Defaults to None.
+        - norm (Normalization, optional): Weight normalization method for linear layer. Defaults to None.
+        - norm_alpha (float, optional): Alpha value for weight normalization. Defaults to 0.0.
+        - optimiser (Optimiser, optional): Optimiser for updating weights. Defaults to None.
         """
+        # Check if there's validation data
+        has_val = x_val is not None and y_val is not None
+
+        # Set early stopping to -1 if no validation data
+        early_stopping = -1 if not has_val else early_stopping
+
+        # Initialise optimiser
+        self.init_optimiser(optimiser)
+
+        # Initialise loss function
+        self.loss_fn = loss_fn
+
+        # Initialise weight normalisation (for linear layer)
+        self.norm = norm
+        self.norm_alpha = norm_alpha
 
         # Record training loss and accuracy per epoch
         self.loss_ls = []
-        self.test_loss_ls = []
-        self.test_acc_ls = []
+        self.acc_ls = []
+        self.val_loss_ls = []
+        self.val_acc_ls = []
 
-        # Max test (validation) loss
+        # Min validation loss
         min_loss = np.inf
 
         # Count rounds for early stopping
@@ -149,10 +176,10 @@ class NeuralNetwork:
             x = x[indexes]
             y = y[indexes]
 
-            # Track total test loss per epoch
-            total_test_loss = 0
+            # Track total validation loss per epoch
+            total_val_loss = 0
 
-            # One entire passthrough of data
+            # One entire passthrough of data - one epoch
             for i in range(x_len // batch_size):
                 # Select batch's features and labels
                 x_batch = x[
@@ -171,39 +198,44 @@ class NeuralNetwork:
                 # Backpropagate loss
                 self.backward(self.loss_fn.get_grad(y_pred, y_batch))
 
-                # Get test predictions
-                test_pred = self.forward(x_test, mode="test")
+                # Update weights
+                self.update()
 
-                # Calculate test loss
-                test_loss = self.loss_fn.get_loss(test_pred, y_test)
+                # Calculate training accuracy
+                acc = self.accuracy(y_pred, y_batch)
 
-                # Calculate test accuracy
-                test_acc = self.accuracy(test_pred, y_test)
-
-                # Store training loss, test loss and test accuracy (to plot later)
+                # Store training loss and accuracy (to plot later)
                 self.loss_ls.append(loss)
-                self.test_loss_ls.append(test_loss)
-                self.test_acc_ls.append(test_acc)
+                self.acc_ls.append(acc)
 
-                # Add test loss to total test loss per epoch
-                total_test_loss += test_loss
+                if has_val:
+                    # Get validation predictions
+                    val_pred = self.forward(x_val, mode="test")
 
-                # Calculate new learning rate (according to exponential decay schedule)
-                new_lr = (lr_decay**epoch) * lr
+                    # Calculate validation loss
+                    val_loss = self.loss_fn.get_loss(val_pred, y_val)
 
-                # Update layers' learning rate with new learning rate
-                self.update(new_lr)
+                    # Calculate validation accuracy
+                    val_acc = self.accuracy(val_pred, y_val)
+
+                    # Store validation loss and accuracy (to plot later)
+                    self.val_loss_ls.append(val_loss)
+                    self.val_acc_ls.append(val_acc)
+
+                    # Add val loss to total val loss per epoch
+                    total_val_loss += val_loss
 
                 # Update Epoch, Loss and Accuracy in progress bar description
                 pbar.set_description(
-                    f"Epoch: {epoch+1}, Train Loss: {loss:.4f}, Val Loss: {test_loss:.4f}, Val Accuracy: {test_acc:.4f}, LR: {new_lr:.4f}"
+                    f"Epoch: {epoch+1}, Train Loss: {loss:.4f}, Train Acc: {acc:.4f}{f", Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}" if has_val else ""}"
                 )
 
             # Early stopping
-            if total_test_loss < min_loss:
-                min_loss = total_test_loss
-            else:
-                stopping_rounds += 1
+            if early_stopping != -1:
+                if total_val_loss < min_loss:
+                    min_loss = total_val_loss
+                else:
+                    stopping_rounds += 1
 
         pbar.close()
 
@@ -240,7 +272,7 @@ class NeuralNetwork:
         """
 
         plt.plot(self.loss_ls, label="Training Loss")
-        plt.plot(self.test_loss_ls, label="Test Loss")
+        plt.plot(self.val_loss_ls, label="Validation Loss")
         plt.title(f"{self.loss_fn.get_name()} per Epoch")
         plt.xlabel("Epoch")
         plt.ylabel(self.loss_fn.get_name())
@@ -252,10 +284,12 @@ class NeuralNetwork:
         Plot an accuracy per epoch line graph.
         """
 
-        plt.plot(self.test_acc_ls)
-        plt.title("Accuracy per Epoch")
+        plt.plot(self.acc_ls, label="Training Accuracy")
+        plt.plot(self.val_acc_ls, label="Validation Accuracy")
+        plt.title("Validation Accuracy per Epoch")
         plt.xlabel("Epoch")
         plt.ylabel("Accuracy")
+        plt.legend()
         plt.show()
 
     def test_pred(self, index, x, y):

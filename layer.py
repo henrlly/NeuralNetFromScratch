@@ -1,79 +1,111 @@
 import numpy as np
 
 
-class LinearLayer:
+class Layer:
+    """
+    Base class for a layer in a neural network.
+    """
+
+    def __init__(self):
+        """
+        Initialises a layer. Sets trainable to False and x (input) to None.
+        """
+        self.x = None
+        self.trainable = False
+
+    def forward(self, x, mode="train"):
+        """
+        Performs a forward pass of the layer.
+
+        Args:
+        - x (ndarray): The input to the layer.
+        - mode (str, optional): The mode of the layer. Defaults to "train".
+
+        Returns:
+        - ndarray: The output of the layer.
+        """
+        raise NotImplementedError
+
+    def backward(self, grad):
+        """
+        Performs a backward pass of the layer.
+
+        Args:
+        - grad (ndarray): The gradient of the loss with respect to the output of the layer.
+
+        Returns:
+        - ndarray: The gradient of the loss with respect to the input of the layer.
+        """
+        raise NotImplementedError
+
+    def get_grads(self):
+        """
+        Returns the gradients of the layer.
+
+        Returns:
+        - list[ndarray]: The gradients of the layer.
+        """
+        return []
+
+    def get_params(self):
+        """
+        Returns the parameters of the layer.
+
+        Returns:
+        - list[ndarray]: The parameters of the layer.
+        """
+        return []
+
+    def is_trainable(self):
+        """
+        Returns whether the linear layer is trainable.
+
+        Returns:
+        - bool: Whether the linear layer is trainable.
+        """
+        return self.trainable
+
+
+class LinearLayer(Layer):
     """
     Linear layer with weights and optional biases.
-
-    Attributes:
-    - input_size (int): The size of the input features.
-    - output_size (int): The size of the output features.
-    - w (ndarray): The weight matrix of shape (output_size, input_size).
-    - b (ndarray): The bias vector of shape (output_size).
-    - x (ndarray): The input data of shape (batch_size, input_size).
-    - grad_w (ndarray): The gradient of the loss with respect to the weights,
-                        of shape (input_size, output_size).
-    - grad_b (ndarray): The gradient of the loss with respect to the biases,
-                        of shape (output_size).
-    - biases (bool): Whether to include biases in the layer.
-
-    Methods:
-    - __init__(input_size, output_size, biases=True): Initializes a linear layer
-                                                      with random weights and biases (optional).
-    - forward(x, mode="train"): Performs forward propagation through the linear layer.
-    - backward(grad): Performs backward propagation through the linear layer.
-    - update(lr): Updates the weights and biases of the linear layer using gradient descent.
     """
 
     def __init__(self, input_size, output_size, biases=True):
         """
-        Initializes a linear layer with random weights and biases (optional).
+        Initialises a linear layer with random weights and optional biases.
+        Trainable by default.
 
         Args:
         - input_size (int): The size of the input features.
         - output_size (int): The size of the output features.
         - biases (bool, optional): Whether to include biases in the layer. Defaults to True.
         """
+        super().__init__()
+        self.trainable = True
         self.input_size = input_size
         self.output_size = output_size
 
-        # Initialise weights and biases with uniform random distribution and mean of 0
+        # Initialise weights and biases with from uniform distribution over [-0.5, 0.5).
+        # High entropy initialisation to "break symmetry".
+        # If two units the same initial parameters,
+        # then a deterministic learning algorithm applied to a deterministic cost and model
+        # will constantly update both of these units in the same way.
         self.w = np.random.rand(output_size, input_size) - 0.5
-        self.b = np.random.rand(output_size) - 0.5
-        self.x = None
+
+        # Initialise biases to constant zero (heuristic)
+        self.b = np.zeros(output_size)
         self.grad_w = None
         self.grad_b = None
         self.biases = biases
 
     def forward(self, x, mode="train"):
-        """
-        Performs forward propagation through the linear layer.
-
-        Args:
-        - x (ndarray): The input data of shape (batch_size, input_size).
-        - mode (str, optional): The mode of operation. Defaults to "train".
-
-        Returns:
-        - ndarray: The output of the linear layer of shape (batch_size, output_size).
-        """
         self.x = x
 
         # f(x) = x . Weights.T + Biases
         return x.dot(self.w.T) + (self.b if self.biases else 0)
 
     def backward(self, grad):
-        """
-        Performs backward propagation through the linear layer.
-
-        Args:
-        - grad (ndarray): The gradient of the loss with respect to the output of the linear layer,
-                            of shape (batch_size, output_size).
-
-        Returns:
-        - ndarray: The gradient of the loss with respect to the input of the linear layer,
-                     of shape (batch_size, input_size).
-        """
-
         # Calculate gradients for weights
         # Divide by batch size to stabalise gradients
         self.grad_w = grad.T.dot(self.x) / grad.shape[0]
@@ -85,63 +117,39 @@ class LinearLayer:
 
         return grad.dot(self.w)
 
-    def update(self, lr, norm=None, norm_alpha=1e-5):
-        """
-        Updates the weights and biases of the linear layer using gradient descent.
-
-        Args:
-        - lr (float): The learning rate.
-        """
-
-        # Weight decay / regularisation by L1 (Lasso) or L2 (Ridge) normalisation
-        if norm == "l1":
-            # Regularisation term = abs(weight)
-            # Gradient = sign(weight) or weight / abs(weight)
-            # Results in sparse weights
-            self.w -= lr * norm_alpha * np.sign(self.w)
-
-        elif norm == "l2":
-            # Regularisation term = 1/2 * (weight ** 2)
-            # Gradient = weight
-            # Reduces magnitude of weights with large magnitude
-            self.w -= lr * norm_alpha * self.w
-
-        self.w -= lr * self.grad_w
+    def get_grads(self):
         if self.biases:
-            self.b -= lr * self.grad_b
+            return [self.grad_w, self.grad_b]
+        else:
+            return [self.grad_w]
+
+    def get_params(self):
+        if self.biases:
+            return [self.w, self.b]
+        else:
+            return [self.w]
 
 
-class DropoutLayer:
+class DropoutLayer(Layer):
     """
-    A class representing a dropout layer in a neural network.
+    Dropout layer.
     Dropout masks neurons with probability p, creating an (exponentially large) ensemble of sub-networks.
-
-    Attributes:
-    - p (float): The probability of dropping out a neuron.
-    - mask (ndarray): The mask used during forward propagation to drop out neurons.
-
-    Methods:
-    - forward(x, mode="train"): Performs forward propagation through the dropout layer.
-    - backward(grad): Performs backward propagation through the dropout layer.
-    - update(lr): Updates the parameters of the dropout layer.
     """
 
     def __init__(self, p):
+        """
+        Initialises a dropout layer.
+
+        Args:
+        - p (float): The probability of dropping out a neuron.
+        """
+        super().__init__()
         self.p = p
         self.mask = None
 
     def forward(self, x, mode="train"):
-        """
-        Performs forward propagation through the dropout layer.
-
-        Args:
-        - x (ndarray): The input to the dropout layer.
-        - mode (str): The mode of operation. Default is "train".
-
-        Returns:
-        - ndarray: The output of the dropout layer.
-        """
         if mode == "train":
+            # Random sample from uniform distribution over [0, 1)
             self.mask = np.random.rand(*x.shape) > self.p
 
             # Zero out neurons with probability p
@@ -153,246 +161,97 @@ class DropoutLayer:
             return x * (1 - self.p)
 
     def backward(self, grad):
-        """
-        Performs backward propagation through the dropout layer.
-
-        Args:
-        - grad (ndarray): The gradient of the loss with respect to the output of the dropout layer.
-
-        Returns:
-        - ndarray: The gradient of the loss with respect to the input of the dropout layer.
-        """
-
         # Only propagate gradients whose neurons were not zeroed out
         return grad * self.mask
 
-    def update(self, lr):
-        """
-        Updates the parameters of the dropout layer.
 
-        Args:
-        - lr (float): The learning rate.
-        """
-        pass
-
-
-class ReLULayer:
+class ReLULayer(Layer):
     """
     ReLU (Rectified Linear Unit) activation function.
     """
 
-    def __init__(self):
-        self.x = None
-
     def forward(self, x, mode="train"):
-        """
-        Performs forward pass through the ReLU layer.
-
-        Args:
-        - x: Input data.
-        - mode: Mode of operation ("train" or "test").
-
-        Returns:
-        - Output of the ReLU layer.
-        """
         self.x = x
 
         # Zero out negative neurons
         return np.maximum(x, 0)
 
     def backward(self, grad):
-        """
-        Performs backward pass through the ReLU layer.
-
-        Args:
-        - grad: Gradient of the loss with respect to the output of the ReLU layer.
-
-        Returns:
-        - Gradient of the loss with respect to the input of the ReLU layer.
-        """
-
         # Only propagate gradients whose neurons were not zeroed out
         return grad * (self.x > 0)
 
-    def update(self, lr):
-        """
-        Updates the parameters of the ReLU layer.
 
-        Args:
-        - lr: Learning rate.
-        """
-        pass
-
-
-class SoftmaxLayer:
+class SoftmaxLayer(Layer):
     """
     Softmax activation function.
     """
 
     def forward(self, x, mode="train"):
-        """
-        Performs the forward pass of the softmax layer.
-
-        Args:
-        - x (ndarray): Input data.
-        - mode (str): Mode of operation. Default is "train".
-
-        Returns:
-        - ndarray: Output of the softmax layer.
-        """
         # Stabilize exp (by preventing very large or very small x)
         e_x = np.exp(x - np.max(x))
         return e_x / np.repeat(e_x.sum(axis=1), x.shape[1]).reshape(x.shape)
 
     def backward(self, grad):
-        """
-        Performs the backward pass of the softmax layer.
-
-        Args:
-        - grad (ndarray): Gradient of the loss with respect to the output of the softmax layer.
-
-        Returns:
-        - ndarray: Gradient of the loss with respect to the input of the softmax layer.
-        """
         return grad
 
-    def update(self, lr):
-        """
-        Updates the parameters of the softmax layer.
 
-        Args:
-        - lr (float): Learning rate.
-        """
-        pass
-
-
-class TanhLayer:
+class TanhLayer(Layer):
     """
     Tanh activation function.
     """
 
-    def __init__(self):
-        self.x = None
-
     def forward(self, x, mode="train"):
-        """
-        Performs the forward pass of the TanhLayer.
-
-        Args:
-        - x: Input tensor.
-        - mode: Mode of operation (default is "train").
-
-        Returns:
-        - ndarray: Output tensor after applying the tanh activation function.
-        """
         self.x = x
         return np.tanh(x)
 
     def backward(self, grad):
-        """
-        Performs the backward pass of the TanhLayer.
-
-        Args:
-        - grad: Gradient tensor.
-
-        Returns:
-        - ndarray: Gradient tensor after backpropagation through the tanh activation function.
-        """
         return grad * (1 - np.tanh(self.x) ** 2)
 
-    def update(self, lr):
-        """
-        Updates the parameters of the TanhLayer.
 
-        Args:
-        - lr: Learning rate.
-        """
-        pass
-
-
-class SigmoidLayer:
+class SigmoidLayer(Layer):
     """
     Sigmoid activation function.
     """
 
-    def __init__(self):
-        self.x = None
-
     def forward(self, x, mode="train"):
-        """
-        Performs the forward pass of the sigmoid layer.
-
-        Args:
-        - x: The input to the layer.
-        - mode: The mode of operation (default is "train").
-
-        Returns:
-        - ndarray: The output of the sigmoid layer.
-        """
         return 1 / (1 + np.exp(-x))
 
     def backward(self, grad):
-        """
-        Performs the backward pass of the sigmoid layer.
-
-        Args:
-        - grad: The gradient of the loss with respect to the output of the sigmoid layer.
-
-        Returns:
-        - ndarray: The gradient of the loss with respect to the input of the sigmoid layer.
-        """
         return grad
 
-    def update(self, lr):
-        """
-        Updates the parameters of the sigmoid layer.
 
-        Args:
-        - lr: The learning rate for the update.
-        """
-        pass
-
-
-class BatchNorm1DLayer:
+class BatchNorm1DLayer(Layer):
     """
     Batch Normalization 1D Layer.
-
-    Args:
-    - input_dim (int): The dimension of the input.
-    - eps (float, optional): A small value added to the variance to avoid division by zero.
-                             Defaults to 1e-5.
-    - momentum (float, optional): The momentum for updating the running mean and variance.
-                                  Defaults to 0.1.
-    - running (bool, optional): Whether to use the running mean and variance during training.
-                                Defaults to True.
     """
 
-    def __init__(self, input_dim, eps=1e-5, momentum=0.1, running=True):
-        self.input_dim = input_dim
+    def __init__(self, input_size, eps=1e-5, momentum=0.1, running=True):
+        """
+        Initialises a Batch Normalization 1D Layer.
+        Trainable by default.
+
+        Args:
+        - input_size (int): The size of the input features.
+        - eps (float, optional): The epsilon value. Defaults to 1e-5.
+        - momentum (float, optional): The momentum value. Defaults to 0.1.
+        - running (bool, optional): Whether to use running mean and var. Defaults to True.
+        """
+        super().__init__()
+        self.trainable = True
+        self.input_size = input_size
         self.eps = eps
         self.momentum = momentum
         self.running = running
 
-        self.running_mean = np.zeros(input_dim)
-        self.running_var = np.ones(input_dim)
-        self.gamma = np.ones(input_dim)
-        self.beta = np.zeros(input_dim)
+        self.running_mean = np.zeros(input_size)
+        self.running_var = np.ones(input_size)
+        self.gamma = np.ones(input_size)
+        self.beta = np.zeros(input_size)
 
         self.x_norm = self.x = self.dgamma = self.dbeta = None
         self.mean_norm = self.std_dev = self.mean = self.var = None
 
     def forward(self, x, mode="train"):
-        """
-        Forward pass of the Batch Normalization 1D Layer.
-
-        Args:
-        - x (ndarray): The input array.
-        - mode (str, optional): The mode of operation. Can be "train" or "test".
-                                Defaults to "train".
-
-        Returns:
-        - ndarray: The output array after applying batch normalization.
-        """
         if mode == "train":
             self.x = x
             self.mean = np.mean(x, axis=0)
@@ -432,15 +291,6 @@ class BatchNorm1DLayer:
         return out
 
     def backward(self, grad):
-        """
-        Backward pass of the Batch Normalization 1D Layer.
-
-        Args:
-        - grad (ndarray): The gradient array.
-
-        Returns:
-        - ndarray: The gradient array after backpropagation.
-        """
         batch_size = grad.shape[0]
 
         self.dbeta = np.sum(grad, axis=0)
@@ -499,12 +349,8 @@ class BatchNorm1DLayer:
 
         return grad_x_1 + grad_x_2  # 2 gradients accumulate into grad_x
 
-    def update(self, lr):
-        """
-        Update the parameters of the Batch Normalization 1D Layer.
+    def get_grads(self):
+        return [self.dgamma, self.dbeta]
 
-        Args:
-        - lr (float): The learning rate.
-        """
-        self.gamma -= lr * self.dgamma
-        self.beta -= lr * self.dbeta
+    def get_params(self):
+        return [self.gamma, self.beta]
