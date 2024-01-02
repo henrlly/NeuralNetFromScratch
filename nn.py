@@ -268,26 +268,26 @@ class NeuralNetwork:
 
     def plot_loss(self):
         """
-        Plot a loss per epoch line graph.
+        Plot a loss per iteration line graph.
         """
 
         plt.plot(self.loss_ls, label="Training Loss")
         plt.plot(self.val_loss_ls, label="Validation Loss")
-        plt.title(f"{self.loss_fn.get_name()} per Epoch")
-        plt.xlabel("Epoch")
+        plt.title(f"{self.loss_fn.get_name()} per Iteration")
+        plt.xlabel("Iteration")
         plt.ylabel(self.loss_fn.get_name())
         plt.legend()
         plt.show()
 
     def plot_acc(self):
         """
-        Plot an accuracy per epoch line graph.
+        Plot an accuracy per iteration line graph.
         """
 
         plt.plot(self.acc_ls, label="Training Accuracy")
         plt.plot(self.val_acc_ls, label="Validation Accuracy")
-        plt.title("Validation Accuracy per Epoch")
-        plt.xlabel("Epoch")
+        plt.title("Validation Accuracy per Iteration")
+        plt.xlabel("Iteration")
         plt.ylabel("Accuracy")
         plt.legend()
         plt.show()
