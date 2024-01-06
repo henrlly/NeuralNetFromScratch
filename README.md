@@ -23,7 +23,11 @@ Annotated neural net from scratch with NumPy
   - AdaGrad
   - RMSProp
   - Adam
-- Decoupled weight decay (L1 and L2 normalisation)
+- Decoupled weight decay (L1 and L2 regularisation)
 - Early stopping
 - Inference and (hard and soft) scoring with an ensemble of models
 - Save and load models
+
+---
+
+Example of neural net trained on MNIST dataset classification in `classifier.ipynb`
