@@ -31,3 +31,7 @@ Annotated neural net from scratch with NumPy
 ---
 
 Example of neural net trained on MNIST dataset classification in `classifier.ipynb`
+
+---
+
+This was created while reading the [Deep Learning Book](https://www.deeplearningbook.org).
